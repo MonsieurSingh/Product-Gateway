@@ -1,18 +1,50 @@
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
+const multer = require('multer');
 const Product = require('../models/product');
+
+const storage = multer.diskStorage({
+	destination: function (req, file, cb) {
+		cb(null, './uploads/');
+	},
+	filename: function (req, file, cb) {
+	cb(null, new Date().toISOString() + file.originalname);
+	},
+});
+const fileFilter = (req, file, cb) => {
+	// reject a file
+	if (
+		file.mimetype === 'image/jpeg' ||
+		file.mimetype === 'image/jpg' ||
+		file.mimetype === 'image/png' ||
+		file.mimetype === 'image/webp'
+	) {
+		cb(null, true);
+	}
+	else {
+	cb(null, false);
+	}
+};
+const upload = multer({
+	storage: storage,
+	limits: {
+		fileSize: 1024 * 1024 * 5,
+	},
+	fileFilter: fileFilter,
+});
 
 // GET route (all products)
 router.get('/', async (req, res, next) => {
 	try {
-		const docs = await Product.find().select('name price _id').exec();
+		const docs = await Product.find().select('name price _id productImage').exec();
 		const response = {
 			count: docs.length,
 			products: docs.map((doc) => {
 				return {
 					name: doc.name,
 					price: doc.price,
+					productImage: doc.productImage,
 					_id: doc._id,
 					request: {
 						type: 'GET',
@@ -32,13 +64,15 @@ router.get('/', async (req, res, next) => {
 });
 
 // POST route (create product)
-router.post('/', async (req, res, next) => {
+router.post('/', upload.single('productImage'), async (req, res, next) => {
 	try {
 		const product = new Product({
 			_id: new mongoose.Types.ObjectId(),
 			name: req.body.name,
 			price: req.body.price,
+			productImage: req.file.path, // Save the path of the uploaded image
 		});
+		console.log('req.file.path', req.file.path);
 		const result = await product.save();
 		res.status(201).json({
 			message: 'Created product successfully',
@@ -46,12 +80,14 @@ router.post('/', async (req, res, next) => {
 				name: result.name,
 				price: result.price,
 				_id: result._id,
+				productImage: result.productImage,
 				request: {
 					type: 'GET',
 					url: 'http://localhost:3000/products/' + result._id,
 				},
 			},
 		});
+		console.log('result', result);
 	} catch (err) {
 		console.log(err);
 		res.status(500).json({ error: err });
@@ -62,7 +98,7 @@ router.post('/', async (req, res, next) => {
 router.get('/:productId', async (req, res, next) => {
 	try {
 		const id = req.params.productId;
-		const doc = await Product.findById(id).select('name price _id').exec();
+		const doc = await Product.findById(id).select('name price _id productImage').exec();
 		console.log('From database', doc);
 		if (doc) {
 			res.status(200).json({
